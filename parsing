@@ -1,0 +1,57 @@
+#!/bin/bash
+set -eou pipefail
+
+readonly FLAG=(
+	"INPUT_PATH"
+	"TOKEN"
+	"CHARACTER"
+)
+
+# allows for char and token...
+while [ $# -gt 0  ]; do
+	case "$1" in
+		-p|--input-path)
+			INPUT_PATH="$2"
+			shift 2
+			;;
+		-t|--token)
+			TOKEN=1
+			shift
+			;;
+		-c|--character)
+			CHARACTER=1
+			shift
+			;;
+	esac
+done
+
+if [ "$TOKEN" ]; then
+	# Currently superfluous, just wanted to test out if statement.
+	python tokenizer.py "$INPUT_PATH"
+fi
+SYMBOL_TABLE="${INPUT_PATH//txt/syms}"
+FAR_ARCHIVE="${INPUT_PATH//txt/far}"
+
+ngramsymbols "${INPUT_PATH}" "${SYMBOL_TABLE}"
+
+farcompilestrings --fst_type=compact --symbols=text.syms --keep_symbols "${INPUT_PATH}" "${FAR_ARCHIVE}"
+
+# Model building
+for order in {1..3}; do
+	# Not an ideal solution.
+	ORDER_STRING="${order}g.cnts"
+	MODEL_STRING="${order}g.mod"
+	ngramcount --order="$order" "${FAR_ARCHIVE}" "${INPUT_PATH//txt/$ORDER_STRING}"
+	# skipped smoothing, default is katz
+	ngrammake "${INPUT_PATH//txt/$ORDER_STRING}" "${INPUT_PATH//txt/$MODEL_STRING}"
+done
+
+
+# Model observing
+for order in {1..3}; do
+	MODEL_STRING="${order}g.mod"
+	MODEL="${INPUT_PATH//txt/$MODEL_STRING}"
+	ngraminfo "${MODEL}"
+	ngramperplexity "${MODEL}" "${FAR_ARCHIVE}"
+done
+
